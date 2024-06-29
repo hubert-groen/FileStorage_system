@@ -5,9 +5,9 @@ from starlette.responses import RedirectResponse, JSONResponse
 
 from gateway.api_router import (
     call_api_gateway,
-    RedirectAuthServiceException, 
+    RedirectAuthServiceException,
     RedirectStorageServiceException,
-    RedirectNotificationServiceException, 
+    RedirectNotificationServiceException,
     RedirectPaymentServiceException,
 )
 from authentication import authentication_main
@@ -25,44 +25,57 @@ app.mount("/storage", storage_main.storage_app)
 app.mount("/notification", notification_main.notification_app)
 app.mount("/payment", payment_main.payment_app)
 
-logger.add("info.log", format="Log: [{extra[log_id]}: {time} - {level} - {message} ", level="INFO", enqueue=True)
+logger.add(
+    "info.log",
+    format="Log: [{extra[log_id]}: {time} - {level} - {message} ",
+    level="INFO",
+    enqueue=True,
+)
 
 
 @app.middleware("http")
 async def log_middleware(request: Request, call_next):
     log_id = str(uuid4())
     with logger.contextualize(log_id=log_id):
-        logger.info('Request to access ' + request.url.path)
+        logger.info("Request to access " + request.url.path)
         try:
             response = await call_next(request)
-        except Exception as ex:
-            logger.error(f"Request to " + request.url.path + " failed: {ex}")
+        except Exception:
+            logger.error("Request to " + request.url.path + " failed: {ex}")
             response = JSONResponse(content={"success": False}, status_code=500)
         finally:
-            logger.info('Successfully accessed ' + request.url.path)
+            logger.info("Successfully accessed " + request.url.path)
             return response
 
 
 @app.exception_handler(RedirectAuthServiceException)
-def exception_handler_auth(request: Request, exc: RedirectAuthServiceException) -> Response:
-    return RedirectResponse(url='http://localhost:8000/auth/hello')
+def exception_handler_auth(
+    request: Request, exc: RedirectAuthServiceException
+) -> Response:
+    return RedirectResponse(url="http://localhost:8000/auth/hello")
 
 
 @app.exception_handler(RedirectStorageServiceException)
-def exception_handler_storage(request: Request, exc: RedirectStorageServiceException) -> Response:
-    return RedirectResponse(url='http://localhost:8000/storage/hello')
+def exception_handler_storage(
+    request: Request, exc: RedirectStorageServiceException
+) -> Response:
+    return RedirectResponse(url="http://localhost:8000/storage/hello")
 
 
 @app.exception_handler(RedirectNotificationServiceException)
-def exception_handler_notification(request: Request, exc: RedirectNotificationServiceException) -> Response:
-    return RedirectResponse(url='http://localhost:8000/notification/hello')
+def exception_handler_notification(
+    request: Request, exc: RedirectNotificationServiceException
+) -> Response:
+    return RedirectResponse(url="http://localhost:8000/notification/hello")
 
 
 @app.exception_handler(RedirectPaymentServiceException)
-def exception_handler_payment(request: Request, exc: RedirectPaymentServiceException) -> Response:
-    return RedirectResponse(url='http://localhost:8000/payment/hello')
+def exception_handler_payment(
+    request: Request, exc: RedirectPaymentServiceException
+) -> Response:
+    return RedirectResponse(url="http://localhost:8000/payment/hello")
 
 
 @app.get("/hello")
 async def say_hello():
-    return {"message": f"Hello main"}
+    return {"message": "Hello main"}

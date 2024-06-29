@@ -1,55 +1,95 @@
-import json
-
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 
 import google_auth_oauthlib.flow
 import google_auth_oauthlib.interactive
-from google.oauth2 import id_token
 from google.auth.transport import requests
-from fastapi import Request
-from starlette.responses import RedirectResponse
+from google.oauth2.id_token import verify_oauth2_token
+from starlette.middleware.cors import CORSMiddleware
 import os
-from google.auth import jwt
-
+from requests import post, get
+from common.origins import origins
+from authentication.repository import AuthenticationRepository
+from authentication.exceptions import UserDoesNotExist
+from authentication.models import UserModel, UserIdResponse
+from time import time
+import logging
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 auth_app = FastAPI(debug=True)
-
-# https://developers.google.com/identity/protocols/oauth2/web-server
+auth_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
     'authentication/client_secret.json',
     scopes=['openid', 'https://www.googleapis.com/auth/userinfo.profile'])
-flow.redirect_uri = 'http://localhost:8000/auth/callback'
 
-CLIENT_ID = None
-
-
-def verify_token(token):
-    info = id_token.verify_oauth2_token(token, requests.Request(), CLIENT_ID)
-    return info
+CLIENT_ID = flow.client_config["client_id"]
 
 
-@auth_app.get("/hello")
-async def root():
-    return {"message": "hello auth"}
+def add_user_to_storage(token):
+    header = {
+        "Authorization": f"Bearer {token}"
+    }
+    response = post('http://localhost:8000/storage/user', headers=header)
+    if response.status_code == 200:
+        print("Żądanie zostało pomyślnie wysłane.")
+    else:
+        print("Wystąpił problem podczas wysyłania żądania. Kod statusu:", response.status_code)
 
 
-@auth_app.get("/login")
-async def login():
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        prompt='select_account'
-    )
-    return RedirectResponse(url=authorization_url)
+@auth_app.post("/code")
+async def code(code_response: dict, background_tasks: BackgroundTasks):
+    code = code_response['code']
+    id_token = exchange_code_to_id_token(code)
+    info = verify_oauth2_token(id_token, requests.Request(), CLIENT_ID)
+    token = info
+    user_exists = True
 
-
-@auth_app.get("/callback")
-async def callback(request: Request):
+    auth_repo = AuthenticationRepository()
+    user_id=token["sub"]
     try:
-        token_dict = flow.fetch_token(authorization_response=str(request.url))
-        # token_dict['id_token'] += "AA"         # modyfikacja tokenu powoduje błąd i następuje przekierowanie do ponownego logowania
-        verify_token(token_dict["id_token"])
-        return token_dict["id_token"]
+        user = auth_repo.get_user(user_id=user_id)
+    except UserDoesNotExist:
+        print("user does not exist.")
+        user_exists = False
 
-    except Exception as e:
-        return RedirectResponse(url="http://localhost:8000/auth/login")
+    if not user_exists:
+        user = UserModel(user_id=token["sub"], user_name=token["given_name"], user_email=token["email"])
+        try:
+            user_id = auth_repo.insert_user(user)
+            print("New user added.")
+            background_tasks.add_task(add_user_to_storage, id_token)
+
+        except Exception as e:
+            print(e)
+
+    return {
+        'id_token': id_token,
+        'info': info
+    }
+
+
+@auth_app.get("/user_email_to_id")
+async def get_user_id(user_email: str):
+    auth_repo = AuthenticationRepository()
+    try:
+        user_id = auth_repo.get_user_id(user_email=user_email)
+    except UserDoesNotExist:
+        raise HTTPException(status_code=400, detail="User does not exists.")
+    return user_id
+
+
+def exchange_code_to_id_token(code):
+    token_endpoint = get("https://accounts.google.com/.well-known/openid-configuration").json()['token_endpoint']
+    response = post(token_endpoint, data={
+        'code': code,
+        'client_id': CLIENT_ID,
+        'client_secret': flow.client_config["client_secret"],
+        'redirect_uri': 'postmessage',
+        'grant_type': 'authorization_code'
+    })
+    return response.json()['id_token']

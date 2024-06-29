@@ -1,5 +1,9 @@
+
+
 [tool.poetry]
 name = "backend"
+version = "0.0.1"
+authors = ["eteam"]
 description = ""
 readme = "README.md"
 
@@ -13,6 +17,8 @@ google-api-python-client = "^2.125.0"
 google-auth-oauthlib = "^1.2.0"
 pyjwt = "^2.8.0"
 sqlalchemy = "^2.0.29"
+stripe= "^9.4.0"
+python-multipart = "^0.0.9"
 
 
 [build-system]

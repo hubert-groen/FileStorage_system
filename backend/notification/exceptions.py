@@ -3,3 +3,9 @@ class UserAlreadyExists(Exception):
 
 class UserDoesNotExist(Exception):
     ...
+
+class FileAlreadyExists(Exception):
+    ...
+
+class FileDoesNotExist(Exception):
+    ...

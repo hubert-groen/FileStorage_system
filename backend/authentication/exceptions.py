@@ -1,0 +1,6 @@
+class UserAlreadyExists(Exception):
+    ...
+
+
+class UserDoesNotExist(Exception):
+    ...
